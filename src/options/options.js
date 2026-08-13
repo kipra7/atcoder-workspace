@@ -358,15 +358,29 @@ func main() {
 	// write code here
 }`,
   };
+  DEFAULT_TEMPLATES.codon = DEFAULT_TEMPLATES.python;
 
   // Load template code for selected language
   const loadActiveTemplate = () => {
     const lang = templateLangSelect.value;
     const key = `settings:template:${lang}`;
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get([key], (res) => {
-        templateCodeArea.value =
-          res && res[key] !== undefined ? res[key] : DEFAULT_TEMPLATES[lang] || '';
+      const keys = lang === 'codon' ? [key, 'settings:template:python'] : [key];
+      chrome.storage.local.get(keys, (res) => {
+        if (res && res[key] !== undefined) {
+          templateCodeArea.value = res[key];
+          return;
+        }
+
+        const defaultCode =
+          lang === 'codon' && res && res['settings:template:python'] !== undefined
+            ? res['settings:template:python']
+            : DEFAULT_TEMPLATES[lang] || '';
+
+        if (lang === 'codon') {
+          chrome.storage.local.set({ [key]: defaultCode });
+        }
+        templateCodeArea.value = defaultCode;
       });
     } else {
       templateCodeArea.value = DEFAULT_TEMPLATES[lang] || '';

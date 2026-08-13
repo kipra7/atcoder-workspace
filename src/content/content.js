@@ -278,7 +278,7 @@
         case 'fetch-latest-submission': {
           const mode = e.data.mode;
 
-          const getLanguageMode = (langText) => {
+          const getTemplateCategory = (langText) => {
             if (!langText) return 'plaintext';
             const lower = langText.toLowerCase();
             if (
@@ -288,6 +288,7 @@
               lower.includes('g++')
             )
               return 'cpp';
+            if (lower.includes('codon')) return 'codon';
             if (lower.includes('python') || lower.includes('pypy')) return 'python';
             if (lower.includes('rust')) return 'rust';
             if (lower.includes('java')) return 'java';
@@ -351,7 +352,7 @@
                   const cells = row.querySelectorAll('td');
                   if (cells.length < 4) continue;
                   const rowLanguageText = cells[3].textContent.trim();
-                  if (getLanguageMode(rowLanguageText) === mode) {
+                  if (getTemplateCategory(rowLanguageText) === mode) {
                     const detailLink = Array.from(row.querySelectorAll('a')).find((a) => {
                       const href = a.getAttribute('href');
                       return href && href.match(/\/submissions\/\d+/);

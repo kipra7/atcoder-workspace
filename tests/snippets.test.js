@@ -162,6 +162,36 @@ describe('Templates and Custom Snippets Integration Tests', () => {
       expect(templateCodeArea.value).toContain('def main():');
     });
 
+    test('Codon template is migrated from Python once and saved independently', () => {
+      const templateLangSelect = document.getElementById('template-lang-select');
+      const templateCodeArea = document.getElementById('template-code-area');
+      const saveTemplateBtn = document.getElementById('save-template-btn');
+
+      store['settings:template:python'] = '# existing python template';
+
+      templateLangSelect.value = 'codon';
+      templateLangSelect.dispatchEvent(new Event('change'));
+
+      expect(templateCodeArea.value).toBe('# existing python template');
+      expect(store['settings:template:codon']).toBe('# existing python template');
+
+      templateLangSelect.value = 'python';
+      templateLangSelect.dispatchEvent(new Event('change'));
+      templateCodeArea.value = '# updated python template';
+      saveTemplateBtn.dispatchEvent(new Event('click'));
+
+      expect(store['settings:template:python']).toBe('# updated python template');
+      expect(store['settings:template:codon']).toBe('# existing python template');
+
+      templateLangSelect.value = 'codon';
+      templateLangSelect.dispatchEvent(new Event('change'));
+      templateCodeArea.value = '# custom codon template';
+      saveTemplateBtn.dispatchEvent(new Event('click'));
+
+      expect(store['settings:template:codon']).toBe('# custom codon template');
+      expect(store['settings:template:python']).toBe('# updated python template');
+    });
+
     test('Custom Snippets CRUD list management works correctly', () => {
       const addSnippetBtn = document.getElementById('add-snippet-btn');
       const snippetFormContainer = document.getElementById('snippet-form-container');
@@ -368,6 +398,82 @@ describe('Templates and Custom Snippets Integration Tests', () => {
         '#include <bits/stdc++.h>'
       );
       expect(global.chrome.storage.local.set).toHaveBeenCalled();
+    });
+
+    test.each(['Python (CPython 3.13.7)', 'Python (PyPy 3.11-v7.3.20)'])(
+      '%s uses the Python template and Monaco language mode',
+      (languageText) => {
+        store['settings:template:python'] = '# custom python template';
+        const configMsg = {
+          type: 'init-config',
+          contestId: 'abc300',
+          problemId: 'abc300_a',
+          selectedLanguageId: '5055',
+          languages: [{ value: '5055', text: languageText }],
+          isDark: false,
+        };
+
+        window.dispatchEvent(new MessageEvent('message', { data: configMsg }));
+
+        expect(global.monaco.editor.create).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            value: '# custom python template',
+            language: 'python',
+          })
+        );
+        expect(store['settings:template:codon']).toBeUndefined();
+      }
+    );
+
+    test('Codon uses Python highlighting and its own migrated template category', () => {
+      store['settings:template:python'] = '# existing python template';
+      const parentPostMessageMock = jest
+        .spyOn(window.parent, 'postMessage')
+        .mockImplementation(() => {});
+      const configMsg = {
+        type: 'init-config',
+        contestId: 'abc300',
+        problemId: 'abc300_a',
+        selectedLanguageId: '5068',
+        languages: [{ value: '5068', text: 'Python (Codon 0.19.3)' }],
+        isDark: false,
+      };
+
+      window.dispatchEvent(new MessageEvent('message', { data: configMsg }));
+
+      expect(global.monaco.editor.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          value: '# existing python template',
+          language: 'python',
+        })
+      );
+      expect(store['settings:template:codon']).toBe('# existing python template');
+      expect(parentPostMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'fetch-latest-submission',
+          languageId: '5068',
+          mode: 'codon',
+        }),
+        '*'
+      );
+
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'latest-submission-loaded',
+            code: '# previous codon submission',
+            mode: 'codon',
+          },
+        })
+      );
+      expect(global.monaco.editor.createModel).toHaveBeenCalledWith(
+        '# previous codon submission',
+        'python'
+      );
+
+      parentPostMessageMock.mockRestore();
     });
 
     test('fetches latest submission from AtCoder if local code history is empty', async () => {

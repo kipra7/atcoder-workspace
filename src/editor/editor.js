@@ -199,6 +199,7 @@ func main() {
 	// write code here
 }`,
   };
+  DEFAULT_TEMPLATES.codon = DEFAULT_TEMPLATES.python;
 
   // Preset snippets database
   const PRESET_SNIPPETS = {
@@ -802,6 +803,7 @@ impl UnionFind {
       lower.includes('g++')
     )
       return 'cpp';
+    if (lower.includes('codon')) return 'python';
     if (lower.includes('python') || lower.includes('pypy')) return 'python';
     if (lower.includes('rust')) return 'rust';
     if (lower.includes('java')) return 'java';
@@ -819,6 +821,36 @@ impl UnionFind {
     if (lower.includes('bash') || lower.includes('shell')) return 'shell';
 
     return 'plaintext';
+  }
+
+  // Template categories are independent from Monaco language modes.
+  function getTemplateCategory(langText) {
+    if (langText && langText.toLowerCase().includes('codon')) return 'codon';
+    return getLanguageMode(langText);
+  }
+
+  function loadTemplate(templateCategory, callback) {
+    const templateKey = `settings:template:${templateCategory}`;
+    const keys =
+      templateCategory === 'codon' ? [templateKey, 'settings:template:python'] : [templateKey];
+
+    chrome.storage.local.get(keys, (res) => {
+      if (res && res[templateKey] !== undefined) {
+        callback(res[templateKey]);
+        return;
+      }
+
+      const templateCode =
+        templateCategory === 'codon' && res && res['settings:template:python'] !== undefined
+          ? res['settings:template:python']
+          : DEFAULT_TEMPLATES[templateCategory] || '';
+
+      if (templateCategory === 'codon') {
+        chrome.storage.local.set({ [templateKey]: templateCode }, () => callback(templateCode));
+        return;
+      }
+      callback(templateCode);
+    });
   }
 
   // Notify parent content script that editor is ready
@@ -1288,13 +1320,14 @@ impl UnionFind {
         const selectedOption = langSelect.options[langSelect.selectedIndex];
         const langText = selectedOption ? selectedOption.textContent : '';
         const mode = getLanguageMode(langText);
+        const templateCategory = getTemplateCategory(langText);
         console.log('[AtCoder Workspace] Editor: latest-submission-loaded event triggered', {
           receivedMode: e.data.mode,
-          currentMode: mode,
+          currentTemplateCategory: templateCategory,
           hasCode: !!e.data.code,
         });
 
-        if (e.data.mode === mode && editor) {
+        if (e.data.mode === templateCategory && editor) {
           const code = e.data.code;
           if (code) {
             console.log('[AtCoder Workspace] Editor: Applying loaded past submission code');
@@ -1637,6 +1670,7 @@ impl UnionFind {
       const selectedOption = langSelect.options[langSelect.selectedIndex];
       const langText = selectedOption ? selectedOption.textContent : '';
       const mode = getLanguageMode(langText);
+      const templateCategory = getTemplateCategory(langText);
 
       // Load initial code from storage (only if currentLanguageId is valid)
       const storageKey = currentLanguageId
@@ -1723,16 +1757,12 @@ impl UnionFind {
           hasInitialCode: !!initialCode,
           currentLanguageId,
           mode,
+          templateCategory,
         });
         if (!initialCode && currentLanguageId) {
-          const templateKey = `settings:template:${mode}`;
-          chrome.storage.local.get([templateKey], (tplRes) => {
-            const templateCode =
-              tplRes && tplRes[templateKey] !== undefined
-                ? tplRes[templateKey]
-                : DEFAULT_TEMPLATES[mode] || '';
+          loadTemplate(templateCategory, (templateCode) => {
             console.log('[AtCoder Workspace] Editor: initMonaco - applying template', {
-              templateKey,
+              templateCategory,
               hasTemplateCode: !!templateCode,
             });
             createEditorWithCode(templateCode);
@@ -1741,7 +1771,7 @@ impl UnionFind {
               {
                 type: 'fetch-latest-submission',
                 languageId: currentLanguageId,
-                mode: mode,
+                mode: templateCategory,
               },
               '*'
             );
@@ -1934,6 +1964,7 @@ impl UnionFind {
     const selectedOption = langSelect.options[langSelect.selectedIndex];
     const langText = selectedOption ? selectedOption.textContent : '';
     const mode = getLanguageMode(langText);
+    const templateCategory = getTemplateCategory(langText);
 
     // If no language selected, empty the editor, make readOnly, and return
     if (!currentLanguageId) {
@@ -1981,17 +2012,14 @@ impl UnionFind {
 
       if (!code) {
         // Apply Template if empty
-        const templateKey = `settings:template:${mode}`;
-        chrome.storage.local.get([templateKey], (tplRes) => {
-          const templateCode =
-            tplRes[templateKey] !== undefined ? tplRes[templateKey] : DEFAULT_TEMPLATES[mode] || '';
+        loadTemplate(templateCategory, (templateCode) => {
           applyModelWithCode(templateCode);
           // Request latest submission from AtCoder (instead of saving template immediately)
           window.parent.postMessage(
             {
               type: 'fetch-latest-submission',
               languageId: currentLanguageId,
-              mode: mode,
+              mode: templateCategory,
             },
             '*'
           );

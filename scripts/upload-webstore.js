@@ -162,7 +162,121 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function runLocalAuthFlow() {
+  const http = require('http');
+  const authIdx = process.argv.indexOf('--auth');
+  const clientId = (process.argv[authIdx + 1] || process.env.CWS_CLIENT_ID || '').trim();
+  const clientSecret = (process.argv[authIdx + 2] || process.env.CWS_CLIENT_SECRET || '').trim();
+
+  if (!clientId || !clientSecret) {
+    console.error('❌ Usage: node scripts/upload-webstore.js --auth <CLIENT_ID> <CLIENT_SECRET>');
+    process.exit(1);
+  }
+
+  const port = 8888;
+  const redirectUri = `http://localhost:${port}`;
+  const authUrl =
+    `https://accounts.google.com/o/oauth2/v2/auth?` +
+    new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/chromewebstore',
+      access_type: 'offline',
+      prompt: 'consent',
+    }).toString();
+
+  console.log('\n============================================================');
+  console.log('🔐 Chrome Web Store OAuth 2.0 Refresh Token Generator');
+  console.log('============================================================\n');
+  console.log('1. 以下の URL をブラウザで開いて Google アカウントで許可してください:\n');
+  console.log(authUrl);
+  console.log('\n⏳ ブラウザでの認可完了を http://localhost:8888 で待機しています...\n');
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(async (req, res) => {
+      try {
+        const reqUrl = new URL(req.url, redirectUri);
+        const code = reqUrl.searchParams.get('code');
+        const error = reqUrl.searchParams.get('error');
+
+        if (error) {
+          res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(`Authorization failed: ${error}`);
+          server.close();
+          reject(new Error(`OAuth authorization error: ${error}`));
+          return;
+        }
+
+        if (!code) {
+          res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Waiting for OAuth code...');
+          return;
+        }
+
+        const params = new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          grant_type: 'authorization_code',
+          redirect_uri: redirectUri,
+        });
+        const payload = Buffer.from(params.toString(), 'utf8');
+
+        const tokenRes = await httpsRequest(
+          {
+            hostname: 'oauth2.googleapis.com',
+            path: '/token',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Content-Length': payload.length,
+            },
+          },
+          payload
+        );
+
+        if (tokenRes.statusCode !== 200 || !tokenRes.body.refresh_token) {
+          res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(`Failed to get refresh_token: ${JSON.stringify(tokenRes.body)}`);
+          server.close();
+          reject(
+            new Error(
+              `Token exchange failed (HTTP ${tokenRes.statusCode}): ${JSON.stringify(tokenRes.body)}`
+            )
+          );
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(
+          '<h2>✅ 認証成功！ターミナルに戻って CWS_REFRESH_TOKEN をコピーしてください。このタブは閉じて構いません。</h2>'
+        );
+        server.close();
+
+        console.log(
+          '✅ 認可に成功しました！以下の値を GitHub Secrets の CWS_REFRESH_TOKEN に登録してください:\n'
+        );
+        console.log('------------------------------------------------------------');
+        console.log(`CWS_REFRESH_TOKEN=${tokenRes.body.refresh_token}`);
+        console.log('------------------------------------------------------------\n');
+        resolve();
+      } catch (err) {
+        server.close();
+        reject(err);
+      }
+    });
+
+    server.listen(port);
+  });
+}
+
 async function main() {
+  if (process.argv.includes('--auth')) {
+    await runLocalAuthFlow();
+    return;
+  }
+
   console.log(`📦 Target package: dist/${zipFileName} (v${version})`);
 
   if (!fs.existsSync(zipFilePath)) {
@@ -256,4 +370,5 @@ module.exports = {
   fetchAccessToken,
   uploadPackage,
   fetchItemStatus,
+  runLocalAuthFlow,
 };

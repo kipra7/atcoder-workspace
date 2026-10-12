@@ -19,6 +19,7 @@
     "changelog": "node scripts/build-changelog.js",
     "release:prepare": "node scripts/prepare-release.js",
     "build": "node scripts/build-release.js",
+    "store:upload": "node scripts/upload-webstore.js",
     "pre-merge": "npm run version:sync && npm run format && npm run lint:fix && npm test && npm run build"
   },
   "devDependencies": {

@@ -429,7 +429,7 @@ describe('Custom Test Cases Module Tests', () => {
       },
     ];
 
-    window.dispatchEvent(
+    editorPort.receiveEvent(
       new MessageEvent('message', {
         data: {
           type: 'init-config',
@@ -442,7 +442,7 @@ describe('Custom Test Cases Module Tests', () => {
       })
     );
 
-    window.dispatchEvent(
+    editorPort.receiveEvent(
       new MessageEvent('message', {
         data: {
           type: 'test-start',
@@ -454,7 +454,7 @@ describe('Custom Test Cases Module Tests', () => {
     expect(document.getElementById('custom-cases-section')).not.toBeNull();
     expect(document.querySelectorAll('.custom-case-card').length).toBe(1);
 
-    window.dispatchEvent(
+    editorPort.receiveEvent(
       new MessageEvent('message', {
         data: {
           type: 'test-case-result',
@@ -467,7 +467,7 @@ describe('Custom Test Cases Module Tests', () => {
         },
       })
     );
-    window.dispatchEvent(
+    editorPort.receiveEvent(
       new MessageEvent('message', {
         data: {
           type: 'test-case-result',
@@ -482,7 +482,7 @@ describe('Custom Test Cases Module Tests', () => {
         },
       })
     );
-    window.dispatchEvent(
+    editorPort.receiveEvent(
       new MessageEvent('message', {
         data: {
           type: 'test-complete',

@@ -173,8 +173,13 @@ describe('Layout Module Tests', () => {
       '<div id="main-container"></div><select name="data.LanguageId"><option value="5001">C++</option></select>';
     jest.spyOn(window, 'getComputedStyle').mockReturnValue({ backgroundColor: 'rgba(0, 0, 0, 0)' });
 
-    const postMessageMock = jest.fn();
-    const iframeWin = { postMessage: postMessageMock };
+    const connectListeners = [];
+    global.chrome.runtime.getURL = (p) => `chrome-extension://dummy-extension-id/${p}`;
+    global.chrome.runtime.onConnect = {
+      addListener: (fn) => connectListeners.push(fn),
+    };
+
+    const iframeWin = {};
     window.AtCoderWorkspace.Layout = {
       init: (cb) => cb(),
       getIframe: () => ({ contentWindow: iframeWin }),
@@ -183,22 +188,38 @@ describe('Layout Module Tests', () => {
       loadNavigationUrls: (_contestId, cb) => cb(null, null),
     };
 
+    const addListenerSpy = jest.spyOn(window, 'addEventListener');
     const script = document.createElement('script');
     script.textContent = contentJs;
     document.body.appendChild(script);
+    const identifyHandler = addListenerSpy.mock.calls.find(([type]) => type === 'message')[1];
+    addListenerSpy.mockRestore();
 
-    const msgEvent = new MessageEvent('message', {
-      data: { type: 'editor-ready' },
+    const msgListeners = [];
+    const mockPort = {
+      name: 'workspace-editor',
+      sender: { id: 'dummy-extension-id' },
+      postMessage: jest.fn(),
+      disconnect: jest.fn(),
+      onMessage: { addListener: (fn) => msgListeners.push(fn) },
+      onDisconnect: { addListener: jest.fn() },
+    };
+
+    connectListeners.forEach((fn) => fn(mockPort));
+    msgListeners.forEach((fn) => fn({ type: 'workspace-identify', bridgeId: 'bridge-31' }));
+    identifyHandler({
+      isTrusted: true,
+      origin: 'chrome-extension://dummy-extension-id',
+      source: iframeWin,
+      data: { type: 'workspace-identify', bridgeId: 'bridge-31' },
     });
-    Object.defineProperty(msgEvent, 'source', { value: iframeWin });
-    window.dispatchEvent(msgEvent);
+    msgListeners.forEach((fn) => fn({ type: 'editor-ready' }));
 
-    expect(postMessageMock).toHaveBeenCalledWith(
+    expect(mockPort.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'init-config',
         isDark: false,
-      }),
-      '*'
+      })
     );
   });
 });
